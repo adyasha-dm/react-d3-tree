@@ -64,7 +64,7 @@ export default class Link extends React.PureComponent<LinkProps, LinkState> {
         .transition()
         .duration(transitionDuration)
         .style('opacity', opacity)
-        .each('end', done);
+        .on('end', done);
     }
   }
 
@@ -76,34 +76,34 @@ export default class Link extends React.PureComponent<LinkProps, LinkState> {
       : `M${source.x},${source.y} V${source.y + deltaY / 2} H${target.x} V${target.y}`;
   }
 
-  drawDiagonalPath(linkData: LinkProps['linkData'], orientation: LinkProps['orientation']) {
-    const diagonal = svg
-      .diagonal()
-      .projection(d => (orientation === 'horizontal' ? [d.y, d.x] : [d.x, d.y]));
-    return diagonal(linkData);
-  }
+  // drawDiagonalPath(linkData: LinkProps['linkData'], orientation: LinkProps['orientation']) {
+  //   const diagonal = svg
+  //     .diagonal()
+  //     .projection(d => (orientation === 'horizontal' ? [d.y, d.x] : [d.x, d.y]));
+  //   return diagonal(linkData);
+  // }
 
-  drawStraightPath(linkData: LinkProps['linkData'], orientation: LinkProps['orientation']) {
-    const straight = svg
-      .line()
-      .interpolate('basis')
-      .x(d => d.x)
-      .y(d => d.y);
+  // drawStraightPath(linkData: LinkProps['linkData'], orientation: LinkProps['orientation']) {
+  //   const straight = svg
+  //     .line()
+  //     .interpolate('basis')
+  //     .x(d => d.x)
+  //     .y(d => d.y);
 
-    let data = [
-      { x: linkData.source.x, y: linkData.source.y },
-      { x: linkData.target.x, y: linkData.target.y },
-    ];
+  //   let data = [
+  //     { x: linkData.source.x, y: linkData.source.y },
+  //     { x: linkData.target.x, y: linkData.target.y },
+  //   ];
 
-    if (orientation === 'horizontal') {
-      data = [
-        { x: linkData.source.y, y: linkData.source.x },
-        { x: linkData.target.y, y: linkData.target.x },
-      ];
-    }
+  //   if (orientation === 'horizontal') {
+  //     data = [
+  //       { x: linkData.source.y, y: linkData.source.x },
+  //       { x: linkData.target.y, y: linkData.target.x },
+  //     ];
+  //   }
 
-    return straight(data);
-  }
+  //   return straight(data);
+  // }
 
   drawElbowPath(linkData: LinkProps['linkData'], orientation: LinkProps['orientation']) {
     return orientation === 'horizontal'
@@ -121,12 +121,12 @@ export default class Link extends React.PureComponent<LinkProps, LinkState> {
       return this.drawElbowPath(linkData, orientation);
     }
     if (pathFunc === 'straight') {
-      return this.drawStraightPath(linkData, orientation);
+      return this.drawElbowPath(linkData, orientation);
     }
     if (pathFunc === 'step') {
       return this.drawStepPath(linkData, orientation);
     }
-    return this.drawDiagonalPath(linkData, orientation);
+    return this.drawElbowPath(linkData, orientation);
   }
 
   handleOnClick = evt => {

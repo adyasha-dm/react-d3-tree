@@ -1,6 +1,6 @@
 import React, { ReactElement, SyntheticEvent } from 'react';
 import { polyfill } from 'react-lifecycles-compat';
-import { layout, select, behavior, event } from 'd3';
+import { tree as d3tree, select, hierarchy, zoom as d3zoom, event } from 'd3';
 import clone from 'clone';
 import deepEqual from 'deep-equal';
 import uuid from 'uuid';
@@ -16,6 +16,7 @@ import {
   TreeNode,
   TreeLink,
   NodeElement,
+  PositionCoordinates,
 } from '../types/common';
 import './style.css';
 
@@ -25,8 +26,6 @@ type TreeLinkEventCallback = (
   targetNode: EnhancedTreeNode,
   event: SyntheticEvent
 ) => any;
-
-type Translate = { x: number; y: number };
 
 type TreeProps = {
   data: TreeNode[] | TreeNode;
@@ -44,7 +43,7 @@ type TreeProps = {
   onLinkMouseOut?: TreeLinkEventCallback;
   onUpdate?: (target: { node: EnhancedTreeNode | null; zoom: number; translate: Translate }) => any;
   orientation?: Orientation;
-  translate?: Translate;
+  translate?: PositionCoordinates;
   pathFunc?: PathFunctionOption | PathFunction;
   transitionDuration?: number;
   depthFactor?: number;
@@ -72,7 +71,7 @@ type TreeProps = {
 type TreeState = {
   dataRef: TreeProps['data'];
   data: EnhancedTreeNode[];
-  d3: { translate: Translate; scale: number };
+  d3: { translate: PositionCoordinates; scale: number };
   rd3tSvgClassName: string;
   rd3tGClassName: string;
   isTransitioning: boolean;
@@ -168,30 +167,32 @@ class Tree extends React.Component<TreeProps, TreeState> {
     const g = select(`.${rd3tGClassName}`);
     if (zoomable) {
       svg.call(
-        behavior
-          .zoom()
+        d3zoom()
           .scaleExtent([scaleExtent.min, scaleExtent.max])
           .on('zoom', () => {
-            g.attr('transform', `translate(${event.translate}) scale(${event.scale})`);
+            g.attr('transform', event.transform);
             if (typeof onUpdate === 'function') {
               // This callback is magically called not only on "zoom", but on "drag", as well,
               // even though event.type == "zoom".
               // Taking advantage of this and not writing a "drag" handler.
               onUpdate({
                 node: null,
-                zoom: event.scale,
-                translate: { x: event.translate[0], y: event.translate[1] },
+                zoom: event.k,
+                translate: { x: event.transform.x, y: event.transform.y },
               });
-              this.state.d3.scale = event.scale;
+              this.state.d3.scale = event.k;
               this.state.d3.translate = {
-                x: event.translate[0],
-                y: event.translate[1],
+                x: event.transform.x,
+                y: event.transform.y,
               };
             }
           })
-          .scale(zoom)
-          .translate([translate.x, translate.y])
       );
+
+      // FIXME:
+      // Offset so that first pan and zoom does not jump back to [0,0] coords
+      // d3zoom().scaleBy(svg, zoom);
+      // d3zoom().translateBy(svg, translate.x, translate.y);
     }
   }
 
@@ -472,7 +473,7 @@ class Tree extends React.Component<TreeProps, TreeState> {
    *
    * @return {object} Object containing `nodes` and `links`.
    */
-  generateTree(): { nodes: EnhancedTreeNode[]; links: TreeLink[] } {
+  generateTree() {
     const {
       initialDepth,
       useCollapseData,
@@ -481,30 +482,32 @@ class Tree extends React.Component<TreeProps, TreeState> {
       nodeSize,
       orientation,
     } = this.props;
-    const tree = layout
-      .tree()
+    const tree = d3tree<TreeNode>()
       .nodeSize(orientation === 'horizontal' ? [nodeSize.y, nodeSize.x] : [nodeSize.x, nodeSize.y])
       .separation((a, b) =>
         a.parent.id === b.parent.id ? separation.siblings : separation.nonSiblings
-      )
-      .children(d => (d._collapsed ? null : d._children));
-    const rootNode = this.state.data[0];
-    let nodes = tree.nodes(rootNode);
-    // set `initialDepth` on first render if specified
-    if (
-      useCollapseData === false &&
-      initialDepth !== undefined &&
-      this.internalState.initialRender
-    ) {
-      this.setInitialTreeDepth(nodes, initialDepth);
-      nodes = tree.nodes(rootNode);
-    }
-    if (depthFactor) {
-      nodes.forEach(node => {
-        node.y = node.depth * depthFactor;
-      });
-    }
-    const links = tree.links(nodes);
+      );
+
+    const rootNode = tree(hierarchy(this.state.data[0], d => (d._collapsed ? null : d._children)));
+    let nodes = rootNode.descendants();
+    const links = rootNode.links();
+
+    // Set `initialDepth` on first render if specified
+    // if (
+    //   useCollapseData === false &&
+    //   initialDepth !== undefined &&
+    //   this.internalState.initialRender
+    // ) {
+    //   this.setInitialTreeDepth(nodes, initialDepth);
+    //   nodes = tree.nodes(rootNode);
+    // }
+
+    // if (depthFactor) {
+    //   nodes.forEach(node => {
+    //     node.y = node.depth * depthFactor;
+    //   });
+    // }
+
     return { nodes, links };
   }
 
@@ -566,36 +569,48 @@ class Tree extends React.Component<TreeProps, TreeState> {
             className={rd3tGClassName}
             transform={`translate(${translate.x},${translate.y}) scale(${scale})`}
           >
-            {links.map(linkData => (
-              <Link
-                key={uuid.v4()}
-                orientation={orientation}
-                pathFunc={pathFunc}
-                linkData={linkData}
-                onClick={this.handleOnLinkClickCb}
-                onMouseOver={this.handleOnLinkMouseOverCb}
-                onMouseOut={this.handleOnLinkMouseOutCb}
-                transitionDuration={transitionDuration}
-              />
-            ))}
+            {links.map(linkData => {
+              console.log(linkData);
+              return (
+                <Link
+                  key={uuid.v4()}
+                  orientation={orientation}
+                  pathFunc={pathFunc}
+                  // FIXME:
+                  // @ts-ignore
+                  linkData={linkData}
+                  onClick={this.handleOnLinkClickCb}
+                  onMouseOver={this.handleOnLinkMouseOverCb}
+                  onMouseOut={this.handleOnLinkMouseOutCb}
+                  transitionDuration={transitionDuration}
+                />
+              );
+            })}
 
-            {nodes.map(nodeData => (
-              <Node
-                key={nodeData.id}
-                nodeElement={nodeData.nodeElement ? nodeData.nodeElement : commonNodeElement}
-                nodeLabelProps={nodeLabelProps}
-                nodeLabelComponent={nodeLabelComponent}
-                nodeSize={nodeSize}
-                orientation={orientation}
-                transitionDuration={transitionDuration}
-                nodeData={nodeData}
-                onClick={this.handleNodeToggle}
-                onMouseOver={this.handleOnMouseOverCb}
-                onMouseOut={this.handleOnMouseOutCb}
-                subscriptions={subscriptions}
-                allowForeignObjects={allowForeignObjects}
-              />
-            ))}
+            {nodes.map(({ data, x, y, ...rest }) => {
+              console.log({ data, ...rest });
+              return (
+                <Node
+                  // @ts-ignore
+                  key={data.id}
+                  // @ts-ignore
+                  data={data}
+                  position={{ x, y }}
+                  // @ts-ignore
+                  nodeElement={data.nodeElement ? data.nodeElement : commonNodeElement}
+                  nodeLabelProps={nodeLabelProps}
+                  nodeLabelComponent={nodeLabelComponent}
+                  nodeSize={nodeSize}
+                  orientation={orientation}
+                  transitionDuration={transitionDuration}
+                  onClick={this.handleNodeToggle}
+                  onMouseOver={this.handleOnMouseOverCb}
+                  onMouseOut={this.handleOnMouseOutCb}
+                  subscriptions={subscriptions}
+                  allowForeignObjects={allowForeignObjects}
+                />
+              );
+            })}
           </NodeWrapper>
         </svg>
       </div>

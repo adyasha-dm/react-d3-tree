@@ -1,6 +1,10 @@
+import { HierarchyPointNode } from 'd3';
+
 export type FIXME = any;
 
 export type Orientation = 'horizontal' | 'vertical';
+
+export type PositionCoordinates = { x: number; y: number };
 
 export type TreeNode = {
   name: string;
